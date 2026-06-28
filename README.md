@@ -113,3 +113,17 @@ Apt-get install -y task-auth-ad-sssd gpui gpupdate admc
 Gpupdate
 Gpupdate –force
 Заходим в пользователя (rya)
+
+Возвращаемся в user и пишем apt-get install ansible
+
+Vim /etc/ansible/hosts
+
+[clients]
+Dhcp ansible_host=192.168.2.2 ansible_user=user ansible_password=1
+admc ansible_host=192.168.2.3 ansible_user=user ansible_password=1
+vim /etc/ansible/ansible.cfg
+
+[defaults]
+Inventory =/etc/ansible/hosts
+Host_key_checking = False
+
