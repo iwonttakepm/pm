@@ -6,28 +6,40 @@ Ip name-server 77.88.8.8
 Ip name-server 192.168.1.1 ( можно любой другой айпишник )
 Ip route 0.0.0.0/0 10.51.51.1 ( смотри в основном шлюзе Ethernet Ethernet)
 
+
 int nat
 Ip nat outside
 Ip addr 10.51.51.100/24 ( придумай )
 Ex
+
+
 Int lc
 Ip nat inside
 Ip addr 192.168.2.1/24 ( опять же, придумай )
 Ex
+
+
 port ge0
 Service-instance nat
 Encapsulation untagged
 Connect ip int nat
 Ex
+
+
 port ge1
 Service-instance lc
 Encapsulation untagged
 Connect ip int lc
 Ex
+
+
 Ip nat pool nat1 192.168.2.2-192.168.2.50
+
 Security none
+
 ip nat source dynamic inside-to-outside pool nat1 overload interface nat
-admc srv:
+
+ad srv:
 ip addr: 192.168.2.3
 шлюз:192.168.2.1
 DNS: 8.8.8.8
