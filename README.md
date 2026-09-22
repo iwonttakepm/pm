@@ -1,129 +1,177 @@
-# pm
-Ecorouter:
-hostname ISP
-ip domain-name Фамилия Имя
-Ip name-server 77.88.8.8
-Ip name-server 192.168.1.1 ( можно любой другой айпишник )
-Ip route 0.0.0.0/0 10.51.51.1 ( смотри в основном шлюзе Ethernet Ethernet)
+при установке isp мы указываем ip на провод 
+который идет к экороутеру (192.168.1.1), 
+шлюз мы не указываем.
+
+НЕ ЗАБЫВАЕМ ПОМЕНЯТЬ ИМЕНА МАШИН
 
 
-int nat
-Ip nat outside
-Ip addr 10.51.51.100/24 ( придумай )
-Ex
+НА ISP:
+nano /etc/resolv.conf (устанавливаем днс example [nameserver 8.8.8.8])
+nano /etc/net/sysctl.conf (ставим 1 в ip_forward)
+
+systemctl restart network
+
+iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
+iptables-restore /etc/sysconfig/iptables
+systemctl enable iptables --now
+
+nano /etc/net/ifaces/ens34/ipv4route
+
+(из сети 10.0.0.120/30) via (должны идти на экороутер 192.168.1.2)
+192.168.0.0/24 via 192.168.1.2 (маршрут для локи)
+192.168.73.64/28 via 192.168.1.2
 
 
-Int lc
-Ip nat inside
-Ip addr 192.168.2.1/24 ( опять же, придумай )
-Ex
-
-
+ПЕРЕХОДИМ НА ECOROUTER:
+en
+conf t
+int toisp
+ip address 192.168.1.2/24
+exit
+ip route 0.0.0.0/0 192.168.1.1 (шлюз) (указываем isp как шлюз)
+ip route 192.168.0.0/24 10.0.0.122 (из сети локи отправляем пакет на тора)
+ip route 192.168.73.64/28 10.0.0.122
+exit
+wr
+conf t
 port ge0
-Service-instance nat
-Encapsulation untagged
-Connect ip int nat
-Ex
+service-instance (название интерфейса) toisp
+encapsulation untagged
+connect ip interface toisp
 
-
+int tothor
+ip address 10.0.0.121/30
+exit
 port ge1
-Service-instance lc
-Encapsulation untagged
-Connect ip int lc
-Ex
+service-instance tothor
+encapsulation untagged
+connect ip interface tothor
+ex
+ex
+ex
+wr
 
+УСТАНАВЛИВАЕМ THOR:
+ens33 (к ecorouter - ip 10.0.0.122/30) (шлюз 10.0.0.121)
+ens34 (к loki - ip 192.168.0.1/24)
+ens35 (к magni,modi - ip 192.168.73.65/28)
 
-Ip nat pool nat1 192.168.2.2-192.168.2.50
+ЗАХОДИМ НА THOR:
+nano /etc/net/sysctl.conf (ставим 1 в ip_forward)
+nano /etc/resolv.conf (устанавливаем днс example [nameserver 8.8.8.8])
+systemctl restart network
 
-Security none
+ЗАХОДИМ НА ISP:
+nano /etc/net/ifaces/ens34/ipv4route
 
-ip nat source dynamic inside-to-outside pool nat1 overload interface nat
+(из сети 10.0.0.120/30) via (должны идти на экороутер 192.168.1.2)
+192.168.0.0/24 via 192.168.1.2 (маршрут для локи)
+192.168.73.64/28 via 192.168.1.2
 
-ad srv:
-ip addr: 192.168.2.3
-шлюз:192.168.2.1
-DNS: 8.8.8.8
-Проверяем пинг 8.8.8.8
-Apt-get update
-Apt-get install task-samba-dc
-Rm -rf /etc/samba/smb.conf
-Rm -rf /var/cache/samba
-Rm -rf /var/lib/samba/sysvol
-Samba-tool domain provision
-Realm: Ryabov.Yury
-Enter x3
-P@ssw0rd
-Cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
-Cd /etc/net/ifaces/ens33
-Vim resolv.conf
-Nameserver 127.0.0.1
-Search Ryabov.Yury
-Wq
-Systemctl enable –now samba.service
-Samba-tool dns zonelist 127.0.0.1 -U Administrator
-P@ssw0rd
-Dhcp:
-Cd /etc/net/ifaces/ens33
-Vim resolv.conf
-192.168.2.3
-Search Ryabov.Yury
-Wq
-Systemctl restart network
-Apt-get update
-Ping admc
-Ssh admin@192.168.2.1
-Yes
-Admin ( это пароль от эко роутера )
-Apt-get install dhcp-server
-Systemctl enable –now dhcpd
-Cd /etc/dhcp 
-Cp dhcpd.conf.sample dhcpd.conf
-Vim dhcpd.conf
-subnet 192.168.2.0
-option routers 192.168.2.1
-убираем полностью option nis-domain
-в option domain-name меняем на Ryabov.Yury
-domain-name-servers 192.168.2.3
-range dynamic-bootp 192.168.2.4 192.168.2.10
-под max-lease-time жмем enter x2 
-host CLI {
-hardware ethernet и мак адрес клиента ( запускаем его, жмем Network Adapter и Advanced);
-fixed-address 192.168.2.5;
+ЗАХОДИМ НА THOR:
+apt-get update
+apt-get install dhcp-server
+cd /etc/dhcp/
+ls
+cp dhcpd.conf.example dhcpd.conf
+nano dhcpd.conf (стираем лишнее)
+
+subnet (подсеть) 192.168.0.0 netmask 255.255.255.0 {
+  range 192.168.0.1 192.168.1.50;
+  option domain-name-servers 77.88.8.8; // после установки samba доена ip конторолера ex: 192.168.73.65
+  option routers (шлюз в сторону локи) 192.168.0.1;
+  default-lease-time 900;
+  max-lease-time 7200;
 }
-Wq
-Dhcpd -t
-Systemcrl restart dhcpd
-Systemctl status dhcpd
-CLI:
-Открываем консоль, заходим в рута
-Apt-get update
-Apt-get install -y task-auth-ad-sssd gpui gpupdate admc
-Если ошибка один раз то ребут, если 2 раза то сносим клиент и делаем по новой
-ребут
-Затем заходим в “ центр управления системой, пользователи, аутентификация
-Включаем Active Directory ( рабочая группа: Фамилия )
-Опять ребут
-Заходим в ADMC ( Administrator P@ssw0rd)
-ПКМ по Ryabov.yury создать подразделение ( Ryabov)
-В подразделении создать группу  и пользователя
-Переносим пользователя в группу
-Жмем “Объекты групповой политики” и включаем принудительно, затем пкм и изменить
-В поиске пишем курсор, и разворачиваем все в пользователе
-Открыть консоль
-Gpupdate
-Gpupdate –force
-Заходим в пользователя (rya)
+host loki {
+        hardware ethernet (вставляем мак адрес провода на локи); 
+        fixed-address 192.168.0.20; (по заданию место +12)
+}
 
-Возвращаемся в user и пишем apt-get install ansible
 
-Vim /etc/ansible/hosts
+systemctl restart dhcpd
+systemctl status dhcpd
+systemctl enable dhcpd --now
 
+УСТАНАВЛИВАЕМ ЛОКИ:
+адрес должен быть выдан dhcp
+проверяем пинг
+
+УСТАНАВЛИВАЕМ Magni:
+ip 192.168.73.66
+шлюз 192.168.73.65
+
+ЗАХОДИМ НА MAGNI:
+nano /etc/resolv.conf 
+nameserver 77.88.8.8
+          SAMBA
+apt-get install samba-dc task-auth-ad task-samba-dc
+rm -rf /etc/samba/smb.conf
+nano /etc/krb5.conf заменить ВСЕ example.com на свой домен
+samba-tool domain provision
+1) lastname.name
+2)enter
+3)enter
+4)enter
+systemctl enable --now samba
+systemctl status samba
+
+
+
+
+УСТАНАВЛИВАЕМ Modi:
+ip 192.168.73.67
+шлюз 192.168.73.65
+
+НАСТРОЙКА SSH:
+заходим на тора/magni/modi
+nano /etc/openssh/sshd_config
+меняем:
+port 22 на port 1224 (по заданию)
+passwordauthentication yes
+permitrootlogin yes
+
+systemctl restart sshd
+
+ПОТОМ ЗАХОДИМ НА ЛОКИ:
+nano ~/.ssh/config
+
+Host thor
+    HostName 192.168.0.1
+    User root
+    Port 1224
+
+Host magni
+    HostName 192.168.73.66
+    User root
+    Port 1224
+
+Host modi
+    HostName 192.168.73.67
+    User root
+    Port 1224
+
+
+
+
+          ANSIBLE
+/etc/ansible/hosts
 [clients]
-Dhcp ansible_host=192.168.2.2 ansible_user=user ansible_password=1
-admc ansible_host=192.168.2.3 ansible_user=user ansible_password=1
-vim /etc/ansible/ansible.cfg
+name ansible_host=ipхоста ansible_user=логин ansible_password=пароль ansible_port=порт
+пример:
+thor ansible_host=192.168.2.2 ansible_user=root ansible_password=1 ansible_port=1224
 
+
+/etc/ansible/ansible.cfg
 [defaults]
 Inventory =/etc/ansible/hosts
 Host_key_checking = False
 
+проверка
+ansible -m ping all
+________________________________________________
+дебаг
+если не стартует сервис (dhcpd/samba)
+journalctl -xeu сервис
+journalctl -xeu dhcpd
